@@ -13,11 +13,11 @@ import cors from 'cors'
 const __dirname = path.resolve();
 import compression from "compression";
 import sharp from "sharp";
-import nodemailer from "nodemailer";
 import createPlaylist from "./routes/playlist/create.js";
 import deletePlaylist from "./routes/playlist/delete.js";
 import addToPlaylist from "./routes/playlist/add.js";
 import removeFromPlaylist from "./routes/playlist/remove.js";
+import deleteSong from "./routes/deleteSong.js";
 
 app.use(express.json());
 app.use(compression());
@@ -37,8 +37,6 @@ const authLimiter = rateLimit({
 })
 
 app.set('trust proxy', 1);
-
-import deleteSong from "./routes/deleteSong.js"
 
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
