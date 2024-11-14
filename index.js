@@ -13,11 +13,13 @@ import cors from 'cors'
 const __dirname = path.resolve();
 import compression from "compression";
 import sharp from "sharp";
-import nodemailer from "nodemailer";
 import createPlaylist from "./routes/playlist/create.js";
 import deletePlaylist from "./routes/playlist/delete.js";
 import addToPlaylist from "./routes/playlist/add.js";
 import removeFromPlaylist from "./routes/playlist/remove.js";
+import deleteSong from "./routes/deleteSong.js";
+import verifyEmail from "./routes/verifyEmail.js"
+import authenticateJWT from "./middlewares/authenticateJWT.js";
 
 app.use(express.json());
 app.use(compression());
@@ -38,11 +40,11 @@ const authLimiter = rateLimit({
 
 app.set('trust proxy', 1);
 
-import deleteSong from "./routes/deleteSong.js"
-
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { uploadFile } from "./backblaze.js";
+import sendEmail from "./functions/sendEmail.js";
+import emailHTML from "./email/emailHTML.js";
 
 // Numero di iterazioni (cost) per bcrypt
 const saltRounds = 10;
@@ -75,14 +77,21 @@ app.post("/register", authLimiter, async (req, res) => {
 
   try {
     const hashedPassword = await bcrypt.hash(password, saltRounds);
-    db.func('create_user', [username, hashedPassword, email])
-      .then(data => {
+    const token = jwt.sign({ verifyemail: true }, process.env.SECRET_KEY);
+    await db.func('create_user', [username, hashedPassword, email])
+      .then(async (data) => {
         console.log("An user has been created"); // print data;
+        await db.any(
+          "UPDATE users SET verification_token = $2 WHERE id = $1",
+          [data[0].create_user, token]
+        );
+        sendEmail(email.toString(), "Registration confirmation", "Confirm your email address", emailHTML(token));
         return res.status(200).send("Registrazione completata con successo!");
       })
       .catch(error => {
         console.log('ERROR:', error); // print the error;
       })
+
 
 
   } catch (error) {
@@ -113,28 +122,15 @@ app.post('/login', authLimiter, async (req, res) => {
   if (is_verified) {
     return res.json({ token, username, user_id, is_artist, subscription, is_verified });
   } else {
-    return res.json({ is_verified });
+    return res.status(403).json({ is_verified });
   }
 });
 
 app.get("/verifyemail/:token", async (req, res) => {
-  const token = req.params.token;
-})
+  verifyEmail(req, res);
+});
 
-const authenticateJWT = (req, res, next) => {
-  const token = req.header('Authorization')?.split(' ')[1];
 
-  if (!token) return res.status(401).send('Accesso negato.');
-
-  try {
-    const verified = jwt.verify(token, process.env.SECRET_KEY);
-    req.user = verified; // Salva l'utente decodificato per le successive richieste
-    next();
-  } catch (err) {
-    console.log(err)
-    res.status(400).send('Token non valido.');
-  }
-};
 
 function maybe(fn) {
   return function (req, res, next) {
@@ -565,27 +561,33 @@ app.post("/admin/image/set", uploadLimiter, storage.fields([{ name: "image", max
 })
 
 app.get("/songs/:id", async (req, res) => {
-  const { id } = req.params;
-  const song = await db.any("SELECT id, name, artist_id, album_id, plays FROM songs WHERE id = $1", [id]);
+  try {
+    const { id } = req.params;
 
-  if (!song[0]) {
-    return res.status(404).send("Song not found");
-  }
+    const song = await db.any("SELECT id, name, artist_id, album_id, plays FROM songs WHERE id = $1", [id]);
 
-  const artist = await db.any("SELECT username FROM users WHERE id = $1", [song[0].artist_id]);
+    if (!song[0]) {
+      return res.status(404).send("Song not found");
+    }
 
-  if (song[0].album_id != null) {
-    const album = await db.any("SELECT name FROM albums WHERE id = $1", [song[0].album_id]);
+    const artist = await db.any("SELECT username FROM users WHERE id = $1", [song[0].artist_id]);
+
+    if (song[0].album_id != null) {
+      const album = await db.any("SELECT name FROM albums WHERE id = $1", [song[0].album_id]);
+      return res.status(200).json({
+        ...song[0],
+        artist: artist[0].username,
+        album: album[0].name
+      });
+    }
     return res.status(200).json({
       ...song[0],
       artist: artist[0].username,
-      album: album[0].name
     });
+  } catch (error) {
+    console.log('ERROR:', error); // print the error;
+    return res.status(500).send("Error fetching song");
   }
-  return res.status(200).json({
-    ...song[0],
-    artist: artist[0].username,
-  });
 });
 
 app.get("/albums/:id", async (req, res) => {

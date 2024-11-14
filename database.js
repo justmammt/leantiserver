@@ -4,7 +4,7 @@ const pgp = pgPromise();
 export const db = pgp({
   user: 'postgres',
   password: process.env.PG_PASSWORD,
-  host: 'localhost',
+  host: 'smtp.leantify.eu',
   port: 5432,
   database: 'leantify',
 });
