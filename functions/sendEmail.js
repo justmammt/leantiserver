@@ -1,9 +1,9 @@
-import transporter from "../email/transporter";
+import transporter from "../email/transporter.js";
 
 export default function sendEmail(to, subject, text, html) {
     transporter.sendMail({
         from: {
-            name: "Leantify No-reply",
+            name: "Leantify",
             address: "no-reply@leantify.eu"
         },
         to: to,

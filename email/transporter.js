@@ -1,6 +1,5 @@
 import nodemailer from "nodemailer";
-
-export default transporter = nodemailer.createTransport({
+const transporter = nodemailer.createTransport({
     pool: true,
     host: 'smtp.leantify.eu',
     port: 465,
@@ -14,3 +13,5 @@ export default transporter = nodemailer.createTransport({
     }
 });
 
+
+export default transporter
