@@ -7,7 +7,7 @@ export default transporter = nodemailer.createTransport({
     secure: true,
     auth: {
         user: 'no-reply',
-        pass: process.env.NO_REPLY_PWD
+        pass: process.env.NO_REPLY_PWD.toString()
     },
     tls: {
         rejectUnauthorized: false
