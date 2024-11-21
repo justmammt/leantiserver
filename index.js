@@ -184,20 +184,21 @@ app.post('/login', authLimiter, async (req, res) => {
 
   const user = new User(_user.id);
 
-  const user_id = user.userId
-  const is_artist = await user.isArtistF()
-  let subscription, is_verified
-  await user.getInfo().then(data => {
-    subscription = data.subscription
-    is_verified = data.is_verified
+  const user_id = user.id
+  await user.fetchInfo()
+  console.log({
+    username: user.username,
+    user_id,
+    is_artist: user.isArtist,
+    subscription: user.subscription
   })
 
   // Crea un token JWT
-  const token = jwt.sign({ username: user.username, user_id: user_id, is_artist: is_artist, subscription: subscription }, process.env.SECRET_KEY, { expiresIn: "30d" });
+  const token = jwt.sign({ username: user.username, user_id: user_id, is_artist: user.isArtist, subscription: user.subscription }, process.env.SECRET_KEY, { expiresIn: "30d" });
 
   // Invia il token al client
-  if (is_verified) {
-    return res.json({ token, username, user_id, is_artist, subscription, is_verified });
+  if (user.isVerified) {
+    return res.json({ token, username: user.username, user_id, is_artist: user.isArtist, subscription: user.subscription, is_verified: user.isVerified });
   } else {
     return res.status(403).json({ is_verified });
   }

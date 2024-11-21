@@ -7,6 +7,7 @@ class User {
     username;
     role;
     subscription;
+    isVerified;
     infos;
     isArtist;
 
@@ -32,8 +33,8 @@ class User {
             this.infos = {
                 id: this.id,
                 username: user?.username,
-
             }
+            this.isVerified = user?.is_verified;
             this.isArtist = user?.role === "artist";
             return true
         } catch (error) {
