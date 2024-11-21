@@ -396,14 +396,15 @@ app.get("/albumcovers/:albumId", async (req, res) => {
 
 app.get("/artistcovers/:artistId", async (req, res) => {
   const { artistId } = req.params;
+  
+  if (artistId === 'undefined' || !artistId) {
+    return res.status(400).send("ID artista mancante");
+  }
+
   const result = await db.any(
     "SELECT cover FROM users WHERE id = $1 AND is_artist = true",
     [artistId]
   )
-
-  if (artistId === 'undefined' || !artistId) {
-    return res.status(400).send("ID artista mancante");
-  }
 
   if (!result[0]) {
     return res.status(404).send("Artista non trovato.");
