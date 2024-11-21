@@ -185,7 +185,7 @@ app.post('/login', authLimiter, async (req, res) => {
   const user = new User(_user.id);
 
   const user_id = user.userId
-  const is_artist = await user.isArtist()
+  const is_artist = await user.isArtistF()
   let subscription, is_verified
   await user.getInfo().then(data => {
     subscription = data.subscription

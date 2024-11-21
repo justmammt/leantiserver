@@ -92,7 +92,7 @@ class User {
      * Checks if the current user is an artist
      * @returns {Promise<boolean>} - True if the user is an artist
      */
-    async isArtist() {
+    async isArtistF() {
         try {
             const user = await db.oneOrNone(
                 "SELECT role FROM users WHERE id = $1",
