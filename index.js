@@ -20,6 +20,76 @@ import removeFromPlaylist from "./routes/playlist/remove.js";
 import deleteSong from "./routes/deleteSong.js";
 import verifyEmail from "./routes/verifyEmail.js"
 import authenticateJWT from "./middlewares/authenticateJWT.js";
+import { Server } from 'socket.io';
+import randomSongs from "./routes/random/songs.js";
+
+const WsApp = express();
+const server = createServer(WsApp);
+const io = new Server(server);
+
+io.use((socket, next) => {
+  const token = socket.handshake.auth.token;
+  try {
+    jwt.verify(token, process.env.SECRET_KEY);
+    next();
+  } catch (err) {
+    next(new Error("Invalid token."))
+  }
+});
+
+const activeListeners = new Map();
+
+io.on("connection", (socket) => {
+  console.log(`User connected: ${socket.id}`);
+
+  socket.on("start-song", ({ userId, songId, duration }) => {
+    if (!activeListeners.has(userId)) {
+      activeListeners.set(userId, {});
+      console.log("registered user active")
+    }
+
+    activeListeners.get(userId)[songId] = {
+      duration,
+      listenedTime: 0,
+      isComplete: false,
+      lastReportedPosition: 0,
+      timestamp: Date.now(),
+    };
+  });
+
+  socket.on("progress", ({ userId, songId, currentPosition }) => {
+    const userSongs = activeListeners.get(userId);
+
+    if (!userSongs || !userSongs[songId]) return;
+
+    const songData = userSongs[songId];
+    const deltaTime = (Date.now() - songData.timestamp) / 1000;
+    if (currentPosition > songData.lastReportedPosition) {
+      songData.listenedTime += deltaTime;
+    }
+
+    songData.lastReportedPosition = currentPosition;
+    songData.timestamp = Date.now();
+    if (
+      songData.listenedTime >= songData.duration / 2 &&
+      !songData.isComplete
+    ) {
+      songData.isComplete = true;
+      console.log(`User ${userId} has listened 50% of song ${songId}`)
+      try {
+        db.none("UPDATE songs SET plays = plays + 1 WHERE id = $1", [songId]);
+      } catch (err) {
+        console.log(err)
+      }
+    }
+  });
+
+  socket.on("disconnect", () => {
+    console.log(`User disconnected: ${socket.id}`);
+  });
+});
+
+io.listen(5679);
 
 app.use(express.json());
 app.use(compression());
@@ -45,6 +115,8 @@ import jwt from 'jsonwebtoken';
 import { uploadFile } from "./backblaze.js";
 import sendEmail from "./functions/sendEmail.js";
 import emailHTML from "./email/emailHTML.js";
+import { createServer } from "http";
+import User from "./models/user.js";
 
 // Numero di iterazioni (cost) per bcrypt
 const saltRounds = 10;
@@ -104,19 +176,24 @@ app.post('/login', authLimiter, async (req, res) => {
   const username = req.body.username;
   const password = req.body.password
 
-  const user = await db.any(`SELECT * FROM users WHERE username = $1`, [username]);
-  if (!user[0]) return res.status(400).send('Utente non trovato.');
+  const _user = await db.oneOrNone(`SELECT id, password FROM users WHERE username = $1`, [username]);
+  if (!_user) return res.status(400).send('Utente non trovato.');
 
-  const isValidPassword = await bcrypt.compare(password, user[0].password);
+  const isValidPassword = await bcrypt.compare(password, _user.password);
   if (!isValidPassword) return res.status(401).send('Password errata.');
 
-  const user_id = user[0].id
-  const is_artist = user[0].is_artist
-  const subscription = user[0].subscription
-  const is_verified = user[0].is_verified
+  const user = new User(_user.id);
+
+  const user_id = user.userId
+  const is_artist = await user.isArtist()
+  let subscription, is_verified
+  await user.getInfo().then(data => {
+    subscription = data.subscription
+    is_verified = data.is_verified
+  })
 
   // Crea un token JWT
-  const token = jwt.sign({ username: user.username, user_id: user[0].id, is_artist: is_artist, subscription: subscription }, process.env.SECRET_KEY, { expiresIn: "30d" });
+  const token = jwt.sign({ username: user.username, user_id: user_id, is_artist: is_artist, subscription: subscription }, process.env.SECRET_KEY, { expiresIn: "30d" });
 
   // Invia il token al client
   if (is_verified) {
@@ -154,8 +231,6 @@ app.use(
     authenticateJWT
   )
 );
-
-
 
 app.get("/", (req, res) => {
   res.send("Hello " + req.user.username)
@@ -238,8 +313,6 @@ app.post("/admin/songs/delete", (req, res) => {
 app.get("/listen/:songId", async (req, res) => {
   const { songId } = req.params;
   const userId = req.user.user_id;
-  const ipAddress = req.ip;
-  const LISTEN_INTERVAL = 15 * 60 * 1000;
 
   console.log("Listen started")
 
@@ -257,47 +330,7 @@ app.get("/listen/:songId", async (req, res) => {
     if (!result[0]) {
       return res.status(404).send("Canzone non trovata.");
     }
-
-    try {
-      // Verifica l'ultimo ascolto dal database
-      const rows = await db.any(
-        'SELECT last_play FROM song_plays WHERE ip_address = $1 AND song_id = $2',
-        [ipAddress, songId]
-      );
-
-      const now = new Date();
-
-      if (rows.length > 0) {
-        const lastPlay = new Date(rows[0].last_play);
-
-        if (now - lastPlay < LISTEN_INTERVAL) {
-          console.log("ascolto già registrato")
-          return res.status(200).send({ url: process.env.CDN_URL + result[0].path });
-        }
-
-        // Aggiorna l'ultimo ascolto
-        await db.any(
-          'UPDATE song_plays SET last_play = $1 WHERE ip_address = $2 AND song_id = $3',
-          [now, ipAddress, songId]
-        );
-
-        await db.any('UPDATE songs SET plays = plays + 1 WHERE id = $1', [songId]);
-      } else {
-        // Registra un nuovo ascolto
-        await db.any(
-          'INSERT INTO song_plays (ip_address, song_id, last_play) VALUES ($1, $2, $3)',
-          [ipAddress, songId, now]
-        );
-
-        await db.any('UPDATE songs SET plays = plays + 1 WHERE id = $1', [songId]);
-      }
-
-
-    } catch (error) {
-      console.error('Errore durante la registrazione dell\'ascolto:', error);
-    }
-
-    res.status(200).send({ url: process.env.CDN_URL + result[0].path });
+    return res.status(200).send({ url: process.env.CDN_URL + result[0].path });
 
   } catch (error) {
     console.error("Errore durante l'ascolto:", error);
@@ -335,7 +368,6 @@ app.get("/covers/:songId", async (req, res) => {
     res.setHeader("Content-Length", compressedImage.length);
     res.send(compressedImage);
   } catch (error) {
-    console.log("ERROR:", error); // print the error;
     return res.status(500).send("Error getting image");
   }
 });
@@ -478,17 +510,11 @@ app.get("/search", async (req, res) => {
       db.any("SELECT id, username, subscription FROM users WHERE username ILIKE $1 AND is_artist = true", [searchTerm]),
       db.any("SELECT id, name, artist_id FROM albums WHERE name ILIKE $1", [searchTerm])
     ]);
-    console.log("Ricerca da " + user)
     artists.sort((a, b) => {
       if (a.subscription === "plus" && b.subscription === "basic") return -1;
       if (a.subscription === "basic" && b.subscription === "plus") return 1;
       return 0;
     });
-    console.log({
-      songs,
-      artists,
-      albums,
-    })
     return res.status(200).json({
       songs,
       artists,
@@ -607,14 +633,15 @@ app.get("/albums/:id", async (req, res) => {
 
 app.get("/artists/:id", async (req, res) => {
   const { id } = req.params;
-  const artist = await db.any("SELECT id, username FROM users WHERE id = $1", [id]);
-  if (!artist[0]) {
+  const artist = new User(id)
+  await artist.fetchInfo()
+  if (!artist || !artist.isArtist) {
     return res.status(404).send("Artist not found");
   }
   const albums = await db.any("SELECT id, name FROM albums WHERE artist_id = $1", [id]);
   const songs = await db.any("SELECT id, name, album_id, plays FROM songs WHERE artist_id = $1", [id]);
   return res.status(200).json({
-    ...artist[0],
+    ...artist.infos,
     albums,
     songs
   });
@@ -653,6 +680,10 @@ app.post("/add/playlist", async (req, res) => {
 
 app.post("/remove/playlist", async (req, res) => {
   removeFromPlaylist(req, res)
+});
+
+app.get("/random/songs", async (req, res) => {
+  randomSongs(req, res)
 });
 
 app.listen(port, "0.0.0.0", () => {
