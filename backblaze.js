@@ -1,75 +1,71 @@
 import B2 from "backblaze-b2";
 import "dotenv/config"
-import fse from "fs-extra";
 
 const b2 = new B2({
-    applicationKeyId: process.env.B2_KEY_ID, // or accountId: 'accountId'
-    applicationKey: process.env.B2_KEY // or masterApplicationKey
+    applicationKeyId: process.env.B2_KEY_ID,
+    applicationKey: process.env.B2_KEY
 });
 
-export async function uploadFile(bucketId, localFilePath, destinationPath) {
+export async function uploadFile(bucketId, fileBuffer, destinationPath, mimeType = 'application/octet-stream') { // Added mimeType parameter
     try {
         await b2.authorize();
 
-        // Ottieni l'URL di upload per il bucket
         const uploadUrlResponse = await b2.getUploadUrl(bucketId);
         const { uploadUrl, authorizationToken } = uploadUrlResponse.data;
 
-        // Leggi il contenuto del file locale
-        const fileData = fse.readFileSync(localFilePath);
-        const fileName = destinationPath; // Esempio: "songs/albumName/song.mp3"
+        const fileName = destinationPath;
 
-        // Esegui l'upload
         const response = await b2.uploadFile({
             uploadUrl,
             uploadAuthToken: authorizationToken,
-            fileName, 
-            data: fileData, 
+            fileName,
+            data: fileBuffer,
+            // Explicitly set the content type if provided, or default to 'application/octet-stream'
+            contentType: mimeType  
         });
 
-        console.log("File caricato con successo:", response.data.fileId);
+        console.log("File uploaded successfully:", response.data.fileId);
+        return response.data.fileId; // Return the file ID
     } catch (error) {
-        console.error("Errore durante l'upload:", error);
+        console.error("Error uploading file:", error);
+        throw error; // Re-throw the error for better error handling
     }
 }
+
+
 export async function deleteFile(fileId, fileName) {
     try {
-        await b2.authorize()
-        const response = await b2.deleteFileVersion({
-            fileId,
-            fileName,
-        });
-
-        console.log('File eliminato:', response.data);
+        await b2.authorize();
+        const response = await b2.deleteFileVersion({ fileId, fileName });
+        console.log('File deleted:', response.data);
     } catch (error) {
-        console.error('Errore durante l\'eliminazione del file:', error);
+        console.error('Error deleting file:', error);
+        throw error;  // Re-throw for consistent error handling
     }
 }
+
+
 export async function getFileIdByPath(bucketId, filePath) {
     try {
         await b2.authorize();
 
-        // Elenca i file nel bucket
         const response = await b2.listFileNames({
             bucketId: bucketId,
-            maxFileCount: 1000, // Elenca fino a 1000 file (modificabile se necessario)
+            maxFileCount: 1000, // Adjust as needed
         });
 
         const files = response.data.files;
-
-        // Trova il file che corrisponde alla path
         const targetFile = files.find(file => file.fileName === filePath);
 
         if (targetFile) {
-            console.log(`ID del file: ${targetFile.fileId}`);
+            console.log(`File ID: ${targetFile.fileId}`);
             return targetFile.fileId;
         } else {
-            console.log('File non trovato.');
+            console.log('File not found.');
             return null;
         }
     } catch (error) {
-        console.error('Errore durante la ricerca del file ID:', error);
+        console.error('Error finding file ID:', error);
+        throw error; // Re-throw the error
     }
 }
-
-

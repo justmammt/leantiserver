@@ -2,7 +2,7 @@ import express from "express";
 const app = express();
 const port = 5678;
 import multer from "multer";
-const storage = multer({ dest: "tmp/" });
+const storage = multer({ storage: multer.memoryStorage() });
 import path from "path"
 import axios from "axios"
 import 'dotenv/config'
@@ -20,8 +20,9 @@ import removeFromPlaylist from "./routes/playlist/remove.js";
 import deleteSong from "./routes/deleteSong.js";
 import verifyEmail from "./routes/verifyEmail.js"
 import authenticateJWT from "./middlewares/authenticateJWT.js";
-import { Server } from 'socket.io';
+import fse from "fs-extra";
 import randomSongs from "./routes/random/songs.js";
+import { Server } from "socket.io";
 
 const WsApp = express();
 const server = createServer(WsApp);
@@ -276,8 +277,8 @@ app.post(
           let _coverFileName = req.files["cover"][0].filename;
           let _songFileName = req.files["mp3"][0].filename;
 
-          uploadFile(process.env.BUCKET_ID, path.join(__dirname, "/tmp/" + _coverFileName), "covers/songs/" + data[0].create_song + "/cover.png");
-          uploadFile(process.env.BUCKET_ID, path.join(__dirname, "/tmp/" + _songFileName), "songs/" + data[0].create_song + "/song.mp3"); // print data;
+          uploadFile(process.env.BUCKET_ID, req.files["cover"][0].buffer, "covers/songs/" + data[0].create_song + "/cover.png");
+          uploadFile(process.env.BUCKET_ID, req.files["mp3"][0].buffer, "songs/" + data[0].create_song + "/song.mp3"); 
 
           return res.status(200).send("Song created successfully!");
         })
@@ -295,8 +296,9 @@ app.post(
           let _coverFileName = req.files["cover"][0].filename;
           let _songFileName = req.files["mp3"][0].filename;
 
-          uploadFile(process.env.BUCKET_ID, path.join(__dirname, "/tmp/" + _coverFileName), "covers/songs/" + data[0].create_song_in_album + "/cover.png");
-          uploadFile(process.env.BUCKET_ID, path.join(__dirname, "/tmp/" + _songFileName), "songs/" + data[0].create_song_in_album + "/song.mp3");
+          uploadFile(process.env.BUCKET_ID, req.files["cover"][0].buffer, "covers/songs/" + data[0].create_song_in_album + "/cover.png");
+          uploadFile(process.env.BUCKET_ID, req.files["mp3"][0].buffer, "songs/" + data[0].create_song_in_album + "/song.mp3");
+
           return res.status(200).send("Song created successfully in album!");
         })
         .catch(error => {
@@ -397,7 +399,7 @@ app.get("/albumcovers/:albumId", async (req, res) => {
 
 app.get("/artistcovers/:artistId", async (req, res) => {
   const { artistId } = req.params;
-  
+
   if (artistId === 'undefined' || !artistId) {
     return res.status(400).send("ID artista mancante");
   }
@@ -454,8 +456,7 @@ app.post(
         let _coverFileName = req.files["cover"][0].filename;
         console.log(data[0].create_album)
 
-        uploadFile(process.env.BUCKET_ID, path.join(__dirname, "/tmp/" + _coverFileName), "covers/albums/" + data[0].create_album + "/cover.png");
-
+        uploadFile(process.env.BUCKET_ID, req.files["cover"][0].buffer, "covers/albums/" + data[0].create_album + "/cover.png");
         return res.status(200).send("Album created successfully!");
       })
       .catch(error => {
@@ -573,12 +574,12 @@ app.post("/admin/image/set", uploadLimiter, storage.fields([{ name: "image", max
     return res.status(400).send("Image file is required");
   }
   if (result[0].cover) {
-    await deleteFile(await getFileIdByPath(process.env.BUCKET_ID, result[0].cover), result[0].cover);
+    await deleteFile(await getFileIdByPath(process.env.BUCKET_ID, result[0].cover));
   }
   try {
-    let _coverFileName = req.files["image"][0].filename;
 
     uploadFile(process.env.BUCKET_ID, path.join(__dirname, "/tmp/" + _coverFileName), "covers/artists/" + result[0].id + "/cover.png");
+    fse.remove(path.join(__dirname, "/tmp/" + _coverFileName));
     await db.any("UPDATE users SET cover = $1 WHERE id = $2", ["covers/artists/" + result[0].id + "/cover.png", result[0].id]);
 
     return res.status(200).send("Image uploaded successfully!");
