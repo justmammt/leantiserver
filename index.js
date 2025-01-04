@@ -21,6 +21,7 @@ import deleteSong from "./routes/deleteSong.js";
 import verifyEmail from "./routes/verifyEmail.js"
 import authenticateJWT from "./middlewares/authenticateJWT.js";
 import { Server } from 'socket.io';
+import fse from "fs-extra";
 import randomSongs from "./routes/random/songs.js";
 
 const WsApp = express();
@@ -278,7 +279,8 @@ app.post(
 
           uploadFile(process.env.BUCKET_ID, path.join(__dirname, "/tmp/" + _coverFileName), "covers/songs/" + data[0].create_song + "/cover.png");
           uploadFile(process.env.BUCKET_ID, path.join(__dirname, "/tmp/" + _songFileName), "songs/" + data[0].create_song + "/song.mp3"); // print data;
-
+          fse.deleteFile(path.join(__dirname, "/tmp/" + _coverFileName));
+          fse.deleteFile(path.join(__dirname, "/tmp/" + _songFileName));
           return res.status(200).send("Song created successfully!");
         })
         .catch(error => {
@@ -297,6 +299,8 @@ app.post(
 
           uploadFile(process.env.BUCKET_ID, path.join(__dirname, "/tmp/" + _coverFileName), "covers/songs/" + data[0].create_song_in_album + "/cover.png");
           uploadFile(process.env.BUCKET_ID, path.join(__dirname, "/tmp/" + _songFileName), "songs/" + data[0].create_song_in_album + "/song.mp3");
+          fse.deleteFile(path.join(__dirname, "/tmp/" + _coverFileName));
+          fse.deleteFile(path.join(__dirname, "/tmp/" + _songFileName));
           return res.status(200).send("Song created successfully in album!");
         })
         .catch(error => {
@@ -397,7 +401,7 @@ app.get("/albumcovers/:albumId", async (req, res) => {
 
 app.get("/artistcovers/:artistId", async (req, res) => {
   const { artistId } = req.params;
-  
+
   if (artistId === 'undefined' || !artistId) {
     return res.status(400).send("ID artista mancante");
   }
@@ -455,7 +459,7 @@ app.post(
         console.log(data[0].create_album)
 
         uploadFile(process.env.BUCKET_ID, path.join(__dirname, "/tmp/" + _coverFileName), "covers/albums/" + data[0].create_album + "/cover.png");
-
+        fse.deleteFile(path.join(__dirname, "/tmp/" + _coverFileName));
         return res.status(200).send("Album created successfully!");
       })
       .catch(error => {
@@ -579,6 +583,7 @@ app.post("/admin/image/set", uploadLimiter, storage.fields([{ name: "image", max
     let _coverFileName = req.files["image"][0].filename;
 
     uploadFile(process.env.BUCKET_ID, path.join(__dirname, "/tmp/" + _coverFileName), "covers/artists/" + result[0].id + "/cover.png");
+    fse.deleteFile(path.join(__dirname, "/tmp/" + _coverFileName));
     await db.any("UPDATE users SET cover = $1 WHERE id = $2", ["covers/artists/" + result[0].id + "/cover.png", result[0].id]);
 
     return res.status(200).send("Image uploaded successfully!");
