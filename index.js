@@ -578,8 +578,7 @@ app.post("/admin/image/set", uploadLimiter, storage.fields([{ name: "image", max
   }
   try {
 
-    uploadFile(process.env.BUCKET_ID, path.join(__dirname, "/tmp/" + _coverFileName), "covers/artists/" + result[0].id + "/cover.png");
-    fse.remove(path.join(__dirname, "/tmp/" + _coverFileName));
+    uploadFile(process.env.BUCKET_ID, result[0].buffer, "covers/artists/" + result[0].id + "/cover.png");
     await db.any("UPDATE users SET cover = $1 WHERE id = $2", ["covers/artists/" + result[0].id + "/cover.png", result[0].id]);
 
     return res.status(200).send("Image uploaded successfully!");
