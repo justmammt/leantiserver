@@ -6,6 +6,8 @@ import { db } from "../database.js";
 import sendEmail from "../functions/sendEmail.js";
 import emailHTML from "../email/emailHTML.js";
 import { rateLimit } from "express-rate-limit";
+import User from "../models/user.js";
+
 
 const authLimiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 minute
