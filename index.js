@@ -30,6 +30,8 @@ const WsApp = express();
 const server = createServer(WsApp);
 const io = new Server(server);
 
+app.use(cors())
+
 io.use((socket, next) => {
   const token = socket.handshake.auth.token;
   try {
@@ -148,7 +150,7 @@ import User from "./models/user.js";
 // Numero di iterazioni (cost) per bcrypt
 const saltRounds = 10;
 
-app.use(cors())
+
 
 app.use("/", authRouter);
 app.use("/admin", adminRouter);
