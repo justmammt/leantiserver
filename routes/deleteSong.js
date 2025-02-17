@@ -8,6 +8,7 @@ export default async function deleteSong(song_id, req, res) {
   const artist = req.user.username
   const artist_id = req.user.user_id
   const songInfo = await db.any(`SELECT * from songs where id = $1`, [song_id]);
+  console.log(songInfo)
   const is_artist = req.user.is_artist
   if (!is_artist) {
     return res.status(401).send("Unauthorized");
@@ -33,5 +34,3 @@ export default async function deleteSong(song_id, req, res) {
   }
 
 }
-
-
